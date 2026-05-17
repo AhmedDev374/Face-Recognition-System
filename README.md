@@ -437,9 +437,9 @@ of this software ...
   </tr>
 </table>
 
-> **Institution:** [Your University Name]  
-> **Department:** [Department of Computer Science / Engineering]  
-> **Year:** 2025
+> **Institution:** [E-JUST University]  
+> **Department:** [Department of FOE / Engineering]  
+> **Year:** 2026
 
 ---
 
