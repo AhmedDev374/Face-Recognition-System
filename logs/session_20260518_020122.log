@@ -18,3 +18,4 @@
 2026-05-18 02:04:42,898  [INFO    ]  pca_model — [ 95%] Evaluating training accuracy …
 2026-05-18 02:04:42,947  [INFO    ]  pca_model — [100%] Training complete in 0.31s | Accuracy: 98.2%
 2026-05-18 02:04:42,965  [INFO    ]  pca_model — Model saved to 'pca_model/'
+2026-05-18 02:08:31,302  [INFO    ]  __main__ — Application closed (exit code 0).
