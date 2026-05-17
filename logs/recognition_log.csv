@@ -1,3 +1,2 @@
-timestamp,test_image,predicted,distance,confidence,status,elapsed_ms
-2026-05-18 01:07:19,1.pgm,s1,0.00,100.0,Accepted,3.5
-2026-05-18 01:14:15,WhatsApp Image 2026-05-18 at 1.12.33 AM.jpeg,s26,3751.49,25.0,Accepted,59.0
+timestamp,test_image,predicted,image_file,distance,confidence,status,elapsed_ms
+2026-05-18 02:04:46,1 (1).png,s1,1.pgm,0.00,100.0,Accepted,2.3
