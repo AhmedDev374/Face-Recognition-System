@@ -97,13 +97,18 @@ class RecognitionEngine:
             raise ValueError(f"Cannot read image: {img_path}")
 
         feature_vector = self.model.extract_features(img_flat)
-        result         = self.model.recognize(feature_vector, top_n)
+        result = self.model.recognize(feature_vector, top_n)
         result["img_display"] = img_display
-        result["elapsed_ms"]  = (time.perf_counter() - t0) * 1000
+        result["elapsed_ms"] = (time.perf_counter() - t0) * 1000
+
+        # ── OVERRIDE: Set accepted to True ONLY if confidence > 90% ──
+        if result.get("confidence_pct", 0) > 90.0:
+            result["accepted"] = True
+        else:
+            result["accepted"] = False
 
         self._log_result(img_path, result)
         return result
-
     def _log_result(self, img_path: str, result: dict):
         entry = {
             "timestamp"  : datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
