@@ -430,7 +430,7 @@ of this software ...
 <table>
   <tr>
     <td align="center">
-      <strong>Ahmed Atef Elnadi</strong><br/>
+      <strong>Ahmed Atef Elnadi | ID: 120230024 | FOE-ECE01 </strong><br/>
       Final-Year Computer Science Student<br/>
       <a href="https://github.com/AhmedDev374">GitHub</a> •
       <a href="https://www.linkedin.com/in/ahmed-atef-elnadi-8165a51b9/">LinkedIn</a> •
@@ -446,10 +446,6 @@ of this software ...
 ---
 
 ## 🙏 Acknowledgments
-
-- **Turk, M. & Pentland, A. (1991)** — *Eigenfaces for Recognition*, Journal of Cognitive Neuroscience — the foundational paper this project implements.
-- **AT&T Laboratories Cambridge** — for the ORL Face Database used for training and evaluation.
-- **Moataz M. Abdelwahab, University of Central Florida** — *Novel Image Recognition Techniques Employing Principal Component Analysis* — additional academic reference for this implementation.
 - The open-source communities behind **NumPy**, **OpenCV**, **PyQt5**, and **Matplotlib** for providing the tools that made this project possible.
 
 ---
@@ -457,7 +453,4 @@ of this software ...
 <div align="center">
 
 **⭐ If you found this project useful, please consider giving it a star!**
-
-Made with ❤️ as a Final-Year Project
-
 </div>
