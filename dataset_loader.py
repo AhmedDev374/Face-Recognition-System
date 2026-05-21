@@ -11,10 +11,19 @@
 
   Automatically detects all subject folders (sX) without
   any hard-coded names, so it works with any number of persons.
+
+  Supports a train/test subject split so that no test-set
+  subjects (S21–S40) are ever included in training data.
+
+  Split configuration (controlled by TRAIN_SUBJECTS /
+  TEST_SUBJECTS, or by the subject_filter parameter):
+      Training : s1  – s20
+      Testing  : s21 – s40
 =============================================================
 """
 
 import os
+import re
 import cv2
 import numpy as np
 import logging
@@ -24,6 +33,19 @@ logger = logging.getLogger(__name__)
 # ── Default image dimensions for the ORL database ─────────────
 IMAGE_SIZE = (112, 92)   # (height, width)
 
+# ── Subject-range helpers ──────────────────────────────────────
+TRAIN_SUBJECT_IDS = set(range(1, 21))   # s1  … s20
+TEST_SUBJECT_IDS  = set(range(21, 41))  # s21 … s40
+
+
+def _subject_id(folder_name: str) -> int | None:
+    """
+    Extract the integer subject ID from a folder name like 's7' or 'S21'.
+    Returns None if the name does not match the expected sN pattern.
+    """
+    m = re.fullmatch(r"[sS](\d+)", folder_name)
+    return int(m.group(1)) if m else None
+
 
 class DatasetLoader:
     """
@@ -31,13 +53,21 @@ class DatasetLoader:
 
     Parameters
     ----------
-    dataset_path : str   – root folder of the dataset
-    image_size   : tuple – (height, width) to resize every image
+    dataset_path   : str   – root folder of the dataset
+    image_size     : tuple – (height, width) to resize every image
+    subject_filter : set[int] | None
+        When provided, only subjects whose numeric ID is in this set
+        are loaded.  Pass TRAIN_SUBJECT_IDS for training or
+        TEST_SUBJECT_IDS for evaluation.
+        When None, ALL subjects are loaded (legacy behaviour).
     """
 
-    def __init__(self, dataset_path: str = "dataset", image_size: tuple = IMAGE_SIZE):
-        self.dataset_path = dataset_path
-        self.image_size   = image_size
+    def __init__(self, dataset_path: str = "dataset",
+                 image_size: tuple = IMAGE_SIZE,
+                 subject_filter: set | None = None):
+        self.dataset_path   = dataset_path
+        self.image_size     = image_size
+        self.subject_filter = subject_filter   # None = load all
 
         # Populated after load()
         self.images    : list[np.ndarray] = []   # each: 1-D float64 vector
@@ -48,7 +78,12 @@ class DatasetLoader:
     # ──────────────────────────────────────────────────────────
     def load(self, progress_callback=None) -> tuple[list, list, list]:
         """
-        Walk dataset_path, read every valid image, flatten & float it.
+        Walk dataset_path, read every valid image for the allowed subjects,
+        flatten & float each image.
+
+        If self.subject_filter is set, only folders whose numeric subject ID
+        is in that set are loaded — guaranteeing that training and test
+        subjects are fully disjoint.
 
         Parameters
         ----------
@@ -71,13 +106,38 @@ class DatasetLoader:
             )
 
         # ── Discover all subject sub-directories ──────────────
-        self.person_dirs = sorted([
+        all_dirs = sorted([
             d for d in os.listdir(self.dataset_path)
             if os.path.isdir(os.path.join(self.dataset_path, d))
         ])
 
+        # ── Apply subject filter (S1–S20 vs S21–S40) ──────────
+        if self.subject_filter is not None:
+            filtered_dirs = []
+            skipped_dirs  = []
+            for d in all_dirs:
+                sid = _subject_id(d)
+                if sid is not None and sid in self.subject_filter:
+                    filtered_dirs.append(d)
+                else:
+                    skipped_dirs.append(d)
+
+            if skipped_dirs:
+                logger.info(
+                    "Subject filter active — skipping %d folder(s): %s",
+                    len(skipped_dirs),
+                    ", ".join(skipped_dirs[:10])
+                    + (" …" if len(skipped_dirs) > 10 else "")
+                )
+            self.person_dirs = filtered_dirs
+        else:
+            self.person_dirs = all_dirs
+
         if not self.person_dirs:
-            raise ValueError("No sub-folders found inside the dataset directory.")
+            raise ValueError(
+                "No subject folders matched the filter. "
+                "Check that your dataset contains folders named s1–s40."
+            )
 
         # ── Count total images for progress reporting ──────────
         all_files = []
@@ -91,7 +151,13 @@ class DatasetLoader:
         if total == 0:
             raise ValueError("No valid image files found in any subject folder.")
 
-        logger.info("Found %d images across %d persons", total, len(self.person_dirs))
+        logger.info(
+            "Found %d images across %d persons%s",
+            total,
+            len(self.person_dirs),
+            f" (filter: {sorted(self.subject_filter)})"
+            if self.subject_filter is not None else ""
+        )
 
         # ── Load every image ───────────────────────────────────
         for idx, (person_name, img_path) in enumerate(all_files):

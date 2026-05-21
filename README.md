@@ -295,19 +295,17 @@ The GUI will launch automatically. If a previously trained model exists in `pca_
 ## 📸 Demo & Screenshots
 
 ### Main Interface
-![Main Interface](images/interface.png)
+![Main Interface](pictures/main.PNG)
 
 ### Recognition Result
-![Recognition Result](images/result.png)
+![Recognition Result](pictures/result.PNG)
 
 ### Eigenfaces Visualisation
-![Eigenfaces](images/eigenfaces.png)
+![Eigenfaces Visualisation](pictures/Eigenfaces_Visualisation.PNG)
 
 ### Similarity Graph
-![Similarity Graph](images/similarity.png)
+![Similarity Graph](pictures/similarity_grap.PNG)
 
-### Confusion Matrix
-![Confusion Matrix](images/confusion_matrix.png)
 
 > 📝 *Replace the placeholder paths above with your actual screenshots.*  
 > Recommended: create an `images/` folder in the repository root and add screenshots there.
@@ -428,18 +426,18 @@ of this software ...
 <table>
   <tr>
     <td align="center">
-      <strong>Your Full Name</strong><br/>
+      <strong>Ahmed Atef Elnadi</strong><br/>
       Final-Year Computer Science Student<br/>
-      <a href="https://github.com/YOUR_USERNAME">GitHub</a> •
-      <a href="https://linkedin.com/in/YOUR_PROFILE">LinkedIn</a> •
-      <a href="mailto:your.email@example.com">Email</a>
+      <a href="https://github.com/AhmedDev374">GitHub</a> •
+      <a href="https://www.linkedin.com/in/ahmed-atef-elnadi-8165a51b9/">LinkedIn</a> •
+      <a href="mailto:ahmed.120230024@ejust.edu.eg">Email</a>
     </td>
   </tr>
 </table>
 
-> **Institution:** [Your University Name]  
-> **Department:** [Department of Computer Science / Engineering]  
-> **Year:** 2025
+> **Institution:** [E-JUST University]  
+> **Department:** [Department of FOE / Engineering]  
+> **Year:** 2026
 
 ---
 

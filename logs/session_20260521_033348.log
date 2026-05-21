@@ -1,0 +1,9 @@
+2026-05-21 03:33:48,747  [INFO    ]  __main__ — ============================================================
+2026-05-21 03:33:48,812  [INFO    ]  __main__ —   PCA Face Recognition System  —  Eigenfaces Method
+2026-05-21 03:33:48,918  [INFO    ]  __main__ —   Session started: 2026-05-21 03:33:48
+2026-05-21 03:33:48,997  [INFO    ]  __main__ — ============================================================
+2026-05-21 03:33:49,145  [INFO    ]  __main__ — Initialising RecognitionEngine …
+2026-05-21 03:33:49,282  [INFO    ]  pca_model — Model loaded — 40 eigenfaces, 200 training samples
+2026-05-21 03:33:49,404  [INFO    ]  __main__ — Engine ready.  Model loaded: True
+2026-05-21 03:34:41,548  [INFO    ]  __main__ — GUI launched.
+2026-05-21 03:38:24,652  [INFO    ]  __main__ — Application closed (exit code 0).

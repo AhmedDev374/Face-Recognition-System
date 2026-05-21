@@ -1,24 +1,21 @@
 """
 =============================================================
-  gui.py  (FIXED)
+  gui.py
   Professional dark-mode PyQt5 GUI for the PCA Face
   Recognition System.
 
-  FIXES APPLIED:
-  1. Similarity Graph: labels no longer overlap — uses
-     tight_layout with extra right margin, text inside bars
-     when bar is wide enough, outside otherwise with bbox.
-  2. Confusion Matrix: properly triggers computation and
-     renders seaborn-style heatmap with annotations.
-  3. Rank Results: top_matches table now shows
-     Rank | Person | Image | Distance | Confidence
-     with exact image filenames (e.g. s1/1.pgm).
-  4. Matching Logic: every row is a distinct image match,
-     multiple images of the same person are kept separately.
-  5. Top Matches Table: 5 columns (Rank, Person, Image,
-     Distance, Confidence).
-  6. Scroll support added to tables.
-  7. Dark theme visibility improved.
+  Layout
+  ──────
+  ┌────────────────────────────────────────────────────────┐
+  │  Title bar                                             │
+  ├──────────┬──────────────────────────┬──────────────────┤
+  │  LEFT    │       CENTER             │   RIGHT          │
+  │  Buttons │  Uploaded / Matched img  │  Results panel   │
+  │  Stats   │  Similarity graph        │  History table   │
+  │  Progress│  Eigenfaces / Avg face   │                  │
+  └──────────┴──────────────────────────┴──────────────────┘
+  │  Status bar                                            │
+  └────────────────────────────────────────────────────────┘
 =============================================================
 """
 
@@ -40,23 +37,20 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore    import Qt, QThread, pyqtSignal, QSize
 from PyQt5.QtGui     import QPixmap, QImage, QFont, QColor, QPalette
 
+# Matplotlib embedded in Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use("Qt5Agg")
 
-try:
-    import seaborn as sns
-    HAS_SEABORN = True
-except ImportError:
-    HAS_SEABORN = False
-
 from recognition import RecognitionEngine
 
 logger = logging.getLogger(__name__)
 
-# ── COLOUR PALETTE (Catppuccin Mocha) ─────────────────────────
+# ──────────────────────────────────────────────────────────────
+#  COLOUR PALETTE  (Catppuccin Mocha — dark theme)
+# ──────────────────────────────────────────────────────────────
 PALETTE = {
     "base"    : "#1e1e2e",
     "mantle"  : "#181825",
@@ -128,7 +122,6 @@ QTableWidget {{
     border: none;
     gridline-color: {PALETTE['surface0']};
     selection-background-color: {PALETTE['surface1']};
-    color: {PALETTE['text']};
 }}
 QHeaderView::section {{
     background-color: {PALETTE['surface0']};
@@ -148,28 +141,18 @@ QLabel#lbl_result_card {{
 }}
 QScrollArea {{ border: none; }}
 QStatusBar {{ background-color: {PALETTE['crust']}; color: {PALETTE['subtext1']}; }}
-QScrollBar:vertical {{
-    background: {PALETTE['surface0']};
-    width: 10px;
-    border-radius: 5px;
-}}
-QScrollBar::handle:vertical {{
-    background: {PALETTE['surface2']};
-    border-radius: 5px;
-    min-height: 20px;
-}}
 """
 
 
 # ══════════════════════════════════════════════════════════════
-#  WORKER THREADS
+#  WORKER THREADS  (keep GUI responsive)
 # ══════════════════════════════════════════════════════════════
 class TrainWorker(QThread):
-    progress = pyqtSignal(int, str)
-    finished = pyqtSignal(dict)
-    error    = pyqtSignal(str)
+    progress   = pyqtSignal(int, str)    # (pct, message)
+    finished   = pyqtSignal(dict)        # result dict
+    error      = pyqtSignal(str)
 
-    def __init__(self, engine):
+    def __init__(self, engine: RecognitionEngine):
         super().__init__()
         self.engine = engine
 
@@ -188,7 +171,7 @@ class RecognizeWorker(QThread):
     finished = pyqtSignal(dict)
     error    = pyqtSignal(str)
 
-    def __init__(self, engine, img_path):
+    def __init__(self, engine: RecognitionEngine, img_path: str):
         super().__init__()
         self.engine   = engine
         self.img_path = img_path
@@ -202,25 +185,8 @@ class RecognizeWorker(QThread):
             self.error.emit(str(exc))
 
 
-class ConfusionMatrixWorker(QThread):
-    finished = pyqtSignal(object, list)
-    error    = pyqtSignal(str)
-
-    def __init__(self, engine):
-        super().__init__()
-        self.engine = engine
-
-    def run(self):
-        try:
-            cm, classes = self.engine.compute_confusion_matrix()
-            self.finished.emit(cm, classes)
-        except Exception as exc:
-            logger.exception("Confusion matrix error")
-            self.error.emit(str(exc))
-
-
 # ══════════════════════════════════════════════════════════════
-#  MATPLOTLIB CANVAS
+#  MATPLOTLIB CANVAS  (reusable embedded figure)
 # ══════════════════════════════════════════════════════════════
 class MplCanvas(FigureCanvas):
     def __init__(self, width=5, height=4, dpi=90):
@@ -237,15 +203,15 @@ class MplCanvas(FigureCanvas):
 #  MAIN WINDOW
 # ══════════════════════════════════════════════════════════════
 class MainWindow(QMainWindow):
-    def __init__(self, engine):
+    def __init__(self, engine: RecognitionEngine):
         super().__init__()
-        self.engine      = engine
-        self.current_img = None
-        self.last_result = None
+        self.engine         = engine
+        self.current_img    : str | None  = None   # uploaded test image path
+        self.last_result    : dict | None = None   # last recognition result
 
         self.setWindowTitle("PCA Face Recognition System using Eigenfaces")
         self.setMinimumSize(1280, 780)
-        self.resize(1500, 900)
+        self.resize(1440, 860)
         self.setStyleSheet(DARK_STYLESHEET)
 
         self._build_ui()
@@ -262,6 +228,7 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(8, 8, 8, 4)
         root_layout.setSpacing(6)
 
+        # ── Banner ────────────────────────────────────────────
         banner = QLabel("🧠  PCA Face Recognition System  —  Eigenfaces Method")
         banner.setAlignment(Qt.AlignCenter)
         banner.setStyleSheet(
@@ -270,61 +237,64 @@ class MainWindow(QMainWindow):
         )
         root_layout.addWidget(banner)
 
+        # ── Main horizontal splitter ───────────────────────────
         splitter = QSplitter(Qt.Horizontal)
         root_layout.addWidget(splitter, stretch=1)
 
         splitter.addWidget(self._build_left_panel())
         splitter.addWidget(self._build_center_panel())
         splitter.addWidget(self._build_right_panel())
-        splitter.setSizes([230, 720, 420])
+        splitter.setSizes([220, 700, 380])
 
+        # ── Progress bar ──────────────────────────────────────
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
         root_layout.addWidget(self.progress_bar)
 
+        # ── Status bar ────────────────────────────────────────
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
     # ── LEFT PANEL ────────────────────────────────────────────
-    def _build_left_panel(self):
+    def _build_left_panel(self) -> QWidget:
         panel = QWidget()
-        panel.setMaximumWidth(240)
+        panel.setMaximumWidth(230)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
 
-        btn_group  = QGroupBox("Actions")
+        # Action buttons
+        btn_group = QGroupBox("Actions")
         btn_layout = QVBoxLayout(btn_group)
         btn_layout.setSpacing(6)
 
-        self.btn_upload    = self._btn("⬆  Upload Image",     "btn_upload",    self._upload_image)
-        self.btn_train     = self._btn("⚙  Train Model",      "btn_train",     self._train_model)
-        self.btn_recognize = self._btn("🔍  Recognize",        "btn_recognize", self._recognize)
-        self.btn_save      = self._btn("💾  Save Model",       "btn_save",      self._save_model)
-        self.btn_clear     = self._btn("🗑  Clear",            "btn_clear",     self._clear)
-        self.btn_pdf       = self._btn("📄  Export PDF",       "btn_pdf",       self._export_pdf)
-        self.btn_conf_mat  = self._btn("📊  Confusion Matrix", "btn_conf",      self._show_confusion_matrix)
-        self.btn_exit      = self._btn("✖  Exit",              "btn_exit",      self.close)
+        self.btn_upload    = self._btn("⬆  Upload Image",  "btn_upload",   self._upload_image)
+        self.btn_train     = self._btn("⚙  Train Model",   "btn_train",    self._train_model)
+        self.btn_recognize = self._btn("🔍  Recognize",     "btn_recognize",self._recognize)
+        self.btn_save      = self._btn("💾  Save Model",    "btn_save",     self._save_model)
+        self.btn_clear     = self._btn("🗑  Clear",         "btn_clear",    self._clear)
+        self.btn_pdf       = self._btn("📄  Export PDF",    "btn_pdf",      self._export_pdf)
+        self.btn_exit      = self._btn("✖  Exit",           "btn_exit",     self.close)
 
         for b in [self.btn_upload, self.btn_train, self.btn_recognize,
                   self.btn_save, self.btn_clear, self.btn_pdf,
-                  self.btn_conf_mat, self.btn_exit]:
+                  self.btn_exit]:
             btn_layout.addWidget(b)
 
         layout.addWidget(btn_group)
 
+        # Stats panel
         stats_group = QGroupBox("Model Statistics")
         sg_layout   = QVBoxLayout(stats_group)
         sg_layout.setSpacing(3)
 
-        self.lbl_persons   = self._stat_label("Persons Loaded",  "—")
-        self.lbl_images    = self._stat_label("Training Images", "—")
-        self.lbl_efaces    = self._stat_label("Eigenfaces",      "—")
-        self.lbl_accuracy  = self._stat_label("Train Accuracy",  "—")
-        self.lbl_ttime     = self._stat_label("Training Time",   "—")
-        self.lbl_threshold = self._stat_label("Threshold",
-                             f"{self.engine.model.distance_threshold:.0f}")
+        self.lbl_persons  = self._stat_label("Persons Loaded", "—")
+        self.lbl_images   = self._stat_label("Training Images", "—")
+        self.lbl_efaces   = self._stat_label("Eigenfaces", "—")
+        self.lbl_accuracy = self._stat_label("Train Accuracy", "—")
+        self.lbl_ttime    = self._stat_label("Training Time", "—")
+        self.lbl_threshold= self._stat_label("Threshold", f"{self.engine.model.distance_threshold:.0f}")
 
         for w in [self.lbl_persons, self.lbl_images, self.lbl_efaces,
                   self.lbl_accuracy, self.lbl_ttime, self.lbl_threshold]:
@@ -335,7 +305,7 @@ class MainWindow(QMainWindow):
         return panel
 
     # ── CENTER PANEL ──────────────────────────────────────────
-    def _build_center_panel(self):
+    def _build_center_panel(self) -> QWidget:
         panel  = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -344,17 +314,19 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         layout.addWidget(tabs)
 
-        # Tab 1: Image viewer
-        img_tab    = QWidget()
+        # ── Tab 1: Image viewer ───────────────────────────────
+        img_tab = QWidget()
         img_layout = QHBoxLayout(img_tab)
         img_layout.setSpacing(10)
 
+        # Uploaded image
         up_group = QGroupBox("Uploaded Image")
         up_lay   = QVBoxLayout(up_group)
         self.lbl_upload_img = self._image_label()
         up_lay.addWidget(self.lbl_upload_img)
         img_layout.addWidget(up_group)
 
+        # Best match image
         match_group = QGroupBox("Best Match")
         match_lay   = QVBoxLayout(match_group)
         self.lbl_match_img = self._image_label()
@@ -363,15 +335,15 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(img_tab, "📷 Images")
 
-        # Tab 2: Similarity bar chart  ← FIX: proper layout
-        sim_tab    = QWidget()
+        # ── Tab 2: Similarity bar chart ───────────────────────
+        sim_tab = QWidget()
         sim_layout = QVBoxLayout(sim_tab)
         sim_layout.setContentsMargins(0, 0, 0, 0)
-        self.sim_canvas = MplCanvas(width=7, height=5)
+        self.sim_canvas = MplCanvas(width=6, height=4)
         sim_layout.addWidget(self.sim_canvas)
         tabs.addTab(sim_tab, "📊 Similarity Graph")
 
-        # Tab 3: Eigenfaces grid
+        # ── Tab 3: Eigenfaces grid ────────────────────────────
         ef_tab    = QWidget()
         ef_layout = QVBoxLayout(ef_tab)
         self.ef_canvas = MplCanvas(width=6, height=4)
@@ -381,26 +353,18 @@ class MainWindow(QMainWindow):
         ef_layout.addWidget(btn_show_ef)
         tabs.addTab(ef_tab, "🎭 Eigenfaces")
 
-        # Tab 4: Confusion matrix  ← FIX: dedicated canvas with enough space
-        cm_tab    = QWidget()
-        cm_layout = QVBoxLayout(cm_tab)
-        cm_layout.setContentsMargins(0, 0, 0, 0)
-        self.cm_canvas = MplCanvas(width=7, height=6)
-        cm_layout.addWidget(self.cm_canvas)
-        tabs.addTab(cm_tab, "🔲 Confusion Matrix")
-
         return panel
 
     # ── RIGHT PANEL ───────────────────────────────────────────
-    def _build_right_panel(self):
+    def _build_right_panel(self) -> QWidget:
         panel  = QWidget()
-        panel.setMaximumWidth(440)
+        panel.setMaximumWidth(400)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
         # Result card
-        res_group  = QGroupBox("Recognition Result")
+        res_group = QGroupBox("Recognition Result")
         res_layout = QGridLayout(res_group)
         res_layout.setVerticalSpacing(6)
 
@@ -413,44 +377,37 @@ class MainWindow(QMainWindow):
             res_layout.addWidget(val, row, 1)
             return val
 
-        self.val_person   = _row("Predicted Person:",  0)
-        self.val_imgfile  = _row("Matched Image:",     1)
-        self.val_distance = _row("Distance:",          2)
-        self.val_conf     = _row("Confidence:",        3)
-        self.val_status   = _row("Status:",            4)
-        self.val_time     = _row("Execution Time:",    5)
+        self.val_person   = _row("Predicted Person:", 0)
+        self.val_distance = _row("Distance:",         1)
+        self.val_conf     = _row("Confidence:",       2)
+        self.val_status   = _row("Status:",           3)
+        self.val_time     = _row("Execution Time:",   4)
         layout.addWidget(res_group)
 
-        # ── Top-5 matches table (5 columns) ← FIXED ──────────
-        top_group  = QGroupBox("Top 5 Nearest Matches")
+        # Top-5 matches table
+        top_group = QGroupBox("Top 5 Nearest Matches")
         top_layout = QVBoxLayout(top_group)
-
-        self.top_table = QTableWidget(5, 5)
+        self.top_table = QTableWidget(5, 4)
         self.top_table.setHorizontalHeaderLabels(
-            ["Rank", "Person", "Image", "Distance", "Confidence"]
+            ["Rank", "Person", "Distance", "Confidence"]
         )
         self.top_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.top_table.verticalHeader().setVisible(False)
         self.top_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        # Scroll support: allow table to grow and scroll
-        self.top_table.setMinimumHeight(160)
-        self.top_table.setMaximumHeight(200)
-        self.top_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.top_table.setFixedHeight(175)
         top_layout.addWidget(self.top_table)
         layout.addWidget(top_group)
 
-        # History table (with scroll support)
-        hist_group  = QGroupBox("Recognition History")
+        # History table
+        hist_group = QGroupBox("Recognition History")
         hist_layout = QVBoxLayout(hist_group)
-
-        self.hist_table = QTableWidget(0, 6)
+        self.hist_table = QTableWidget(0, 5)
         self.hist_table.setHorizontalHeaderLabels(
-            ["Time", "Image", "Person", "File", "Conf%", "Status"]
+            ["Time", "Image", "Predicted", "Conf%", "Status"]
         )
         self.hist_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.hist_table.verticalHeader().setVisible(False)
         self.hist_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.hist_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         hist_layout.addWidget(self.hist_table)
         layout.addWidget(hist_group, stretch=1)
 
@@ -460,7 +417,7 @@ class MainWindow(QMainWindow):
     #  HELPER WIDGET FACTORIES
     # ──────────────────────────────────────────────────────────
     @staticmethod
-    def _btn(text, obj_name, slot):
+    def _btn(text: str, obj_name: str, slot) -> QPushButton:
         b = QPushButton(text)
         b.setObjectName(obj_name)
         b.clicked.connect(slot)
@@ -468,7 +425,7 @@ class MainWindow(QMainWindow):
         return b
 
     @staticmethod
-    def _image_label():
+    def _image_label() -> QLabel:
         lbl = QLabel("No image loaded")
         lbl.setAlignment(Qt.AlignCenter)
         lbl.setStyleSheet(
@@ -481,8 +438,8 @@ class MainWindow(QMainWindow):
         return lbl
 
     @staticmethod
-    def _stat_label(title, value):
-        frame  = QFrame()
+    def _stat_label(title: str, value: str) -> QFrame:
+        frame = QFrame()
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(4, 2, 4, 2)
         t = QLabel(title + ":")
@@ -498,10 +455,10 @@ class MainWindow(QMainWindow):
     # ──────────────────────────────────────────────────────────
     #  STATUS / PROGRESS
     # ──────────────────────────────────────────────────────────
-    def _set_status(self, msg):
+    def _set_status(self, msg: str):
         self.status_bar.showMessage(f"  {msg}")
 
-    def _show_progress(self, visible, value=0, text=""):
+    def _show_progress(self, visible: bool, value: int = 0, text: str = ""):
         self.progress_bar.setVisible(visible)
         self.progress_bar.setValue(value)
         if text:
@@ -533,11 +490,11 @@ class MainWindow(QMainWindow):
         self._train_worker.error.connect(self._on_train_error)
         self._train_worker.start()
 
-    def _on_train_progress(self, pct, msg):
+    def _on_train_progress(self, pct: int, msg: str):
         self._show_progress(True, pct, msg)
         self._set_status(msg)
 
-    def _on_train_finished(self, result):
+    def _on_train_finished(self, result: dict):
         self._show_progress(False)
         self._set_buttons_enabled(True)
 
@@ -559,7 +516,7 @@ class MainWindow(QMainWindow):
                                   "❌  Training failed — check dataset path.")
             self._set_status("Training failed.")
 
-    def _on_train_error(self, msg):
+    def _on_train_error(self, msg: str):
         self._show_progress(False)
         self._set_buttons_enabled(True)
         QMessageBox.critical(self, "Training Error", f"❌  {msg}")
@@ -584,7 +541,7 @@ class MainWindow(QMainWindow):
         self._recog_worker.error.connect(self._on_recog_error)
         self._recog_worker.start()
 
-    def _on_recog_finished(self, result):
+    def _on_recog_finished(self, result: dict):
         self._show_progress(False)
         self._set_buttons_enabled(True)
         self.last_result = result
@@ -596,45 +553,39 @@ class MainWindow(QMainWindow):
         color = PALETTE["green"] if result["accepted"] else PALETTE["red"]
         status_text = "✅  ACCEPTED" if result["accepted"] else "❌  REJECTED"
 
-        self.val_person  .setText(result["best_person"])
-        self.val_imgfile .setText(result["best_image_file"])
+        self.val_person  .setText(result["best_label"])
         self.val_distance.setText(f"{result['best_distance']:.2f}")
         self.val_conf    .setText(f"{result['confidence_pct']:.1f}%")
         self.val_status  .setText(status_text)
         self.val_status  .setStyleSheet(f"font-weight:bold; color:{color};")
         self.val_time    .setText(f"{result['elapsed_ms']:.1f} ms")
 
-        # ── Top-5 table with 5 columns ← FIXED ────────────────
-        self.top_table.setRowCount(len(result["top_matches"]))
-        for row, match in enumerate(result["top_matches"]):
-            vals = [
-                str(row + 1),
-                match["person"],
-                match["image"],
-                f"{match['distance']:.2f}",
-                f"{match['confidence']:.1f}%",
-            ]
-            for col, v in enumerate(vals):
-                item = QTableWidgetItem(v)
-                item.setTextAlignment(Qt.AlignCenter)
-                # Highlight best match row
-                bg = QColor(PALETTE["surface1"]) if row == 0 \
-                     else QColor(PALETTE["mantle"])
-                item.setBackground(bg)
-                self.top_table.setItem(row, col, item)
+        # Top-5 table
+        for row, (lbl, dist, _) in enumerate(result["top_matches"]):
+            sim = max(0.0, (1.0 - dist / self.engine.model.distance_threshold) * 100)
+            self.top_table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+            self.top_table.setItem(row, 1, QTableWidgetItem(lbl))
+            self.top_table.setItem(row, 2, QTableWidgetItem(f"{dist:.2f}"))
+            self.top_table.setItem(row, 3, QTableWidgetItem(f"{sim:.1f}%"))
+            # Highlight best match
+            bg = QColor(PALETTE["surface1"]) if row == 0 else QColor(PALETTE["mantle"])
+            for col in range(4):
+                item = self.top_table.item(row, col)
+                if item:
+                    item.setBackground(bg)
 
         # History table
         self._append_history(result)
 
-        # ── Similarity bar chart ← FIXED ──────────────────────
+        # Similarity bar chart
         self._plot_similarity(result)
 
         self._set_status(
-            f"Recognition complete  —  {result['best_person']}/{result['best_image_file']}  "
+            f"Recognition complete  —  {result['best_label']}  "
             f"({result['confidence_pct']:.1f}%  confidence)"
         )
 
-    def _on_recog_error(self, msg):
+    def _on_recog_error(self, msg: str):
         self._show_progress(False)
         self._set_buttons_enabled(True)
         QMessageBox.critical(self, "Recognition Error", f"❌  {msg}")
@@ -660,12 +611,11 @@ class MainWindow(QMainWindow):
         self.lbl_upload_img.setPixmap(QPixmap())
         self.lbl_match_img .setText("No image loaded")
         self.lbl_match_img .setPixmap(QPixmap())
-        for lbl in [self.val_person, self.val_imgfile, self.val_distance,
+        for lbl in [self.val_person, self.val_distance,
                     self.val_conf, self.val_status, self.val_time]:
             lbl.setText("—")
             lbl.setStyleSheet("font-weight:bold;")
         self.top_table.clearContents()
-        self.top_table.setRowCount(5)
         self._clear_canvas(self.sim_canvas)
         self._set_status("Cleared.")
 
@@ -688,137 +638,22 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Export Error", f"❌  {exc}")
 
-    # ── CONFUSION MATRIX  ← FIXED ─────────────────────────────
-    def _show_confusion_matrix(self):
-        if not self.engine.model.is_trained:
-            QMessageBox.warning(self, "No Model", "Train a model first.")
-            return
-
-        # Show info but don't block with a modal dialog before computing
-        self._set_status("Computing confusion matrix (leave-one-out) …")
-        self._set_buttons_enabled(False)
-        self._show_progress(True, 30, "Computing confusion matrix …")
-
-        self._cm_worker = ConfusionMatrixWorker(self.engine)
-        self._cm_worker.finished.connect(self._on_cm_finished)
-        self._cm_worker.error.connect(self._on_cm_error)
-        self._cm_worker.start()
-
-    def _on_cm_error(self, msg):
-        self._show_progress(False)
-        self._set_buttons_enabled(True)
-        QMessageBox.critical(self, "Confusion Matrix Error", f"❌  {msg}")
-        self._set_status("Confusion matrix error.")
-
-    def _on_cm_finished(self, cm, classes):
-        """Render the confusion matrix as a seaborn-style heatmap."""
-        self._show_progress(False)
-        self._set_buttons_enabled(True)
-
-        if cm is None or len(classes) == 0:
-            QMessageBox.warning(self, "No Data",
-                                 "No prediction data available to display.")
-            return
-
-        # Clear and rebuild figure for best rendering
-        fig = self.cm_canvas.figure
-        fig.clear()
-        fig.patch.set_facecolor(PALETTE["mantle"])
-
-        n      = len(classes)
-        # Scale figure height with number of classes
-        needed_h = max(5, min(n * 0.3, 14))
-        fig.set_size_inches(8, needed_h)
-
-        ax = fig.add_subplot(111)
-        ax.set_facecolor(PALETTE["mantle"])
-
-        # Use seaborn heatmap if available, else imshow
-        if HAS_SEABORN:
-            # Only annotate if matrix is small enough to read
-            annotate = n <= 20
-            sns.heatmap(
-                cm,
-                ax=ax,
-                cmap="Blues",
-                annot=annotate,
-                fmt="d" if annotate else "",
-                xticklabels=classes,
-                yticklabels=classes,
-                linewidths=0.3 if n <= 20 else 0,
-                cbar=True,
-                square=False,
-            )
-            ax.set_xticklabels(
-                ax.get_xticklabels(),
-                rotation=90,
-                fontsize=max(4, min(8, 120 // n)),
-                color=PALETTE["text"],
-            )
-            ax.set_yticklabels(
-                ax.get_yticklabels(),
-                rotation=0,
-                fontsize=max(4, min(8, 120 // n)),
-                color=PALETTE["text"],
-            )
-        else:
-            # Fallback: plain imshow with sparse ticks
-            im = ax.imshow(cm, interpolation="nearest", cmap="Blues", aspect="auto")
-            step = max(1, n // 20)
-            ticks = list(range(0, n, step))
-            tick_labels = [classes[i] for i in ticks]
-
-            ax.set_xticks(ticks)
-            ax.set_xticklabels(tick_labels, rotation=90,
-                                fontsize=6, color=PALETTE["text"])
-            ax.set_yticks(ticks)
-            ax.set_yticklabels(tick_labels, fontsize=6, color=PALETTE["text"])
-            fig.colorbar(im, ax=ax, shrink=0.8)
-
-        ax.set_xlabel("Predicted Label", color=PALETTE["text"], fontsize=10, labelpad=8)
-        ax.set_ylabel("True Label",      color=PALETTE["text"], fontsize=10, labelpad=8)
-        ax.set_title("Confusion Matrix (Leave-One-Out Evaluation)",
-                      color=PALETTE["blue"], fontsize=11, pad=12)
-
-        # Style spines and ticks
-        ax.tick_params(colors=PALETTE["text"])
-        for spine in ax.spines.values():
-            spine.set_edgecolor(PALETTE["surface1"])
-
-        fig.tight_layout(pad=1.5)
-        self.cm_canvas.draw()
-
-        # Stats popup
-        with np.errstate(divide="ignore", invalid="ignore"):
-            row_sums   = cm.sum(axis=1)
-            per_class  = np.where(row_sums > 0,
-                                  np.diag(cm) / row_sums, 0.0)
-        total   = cm.sum()
-        overall = (np.trace(cm) / total * 100) if total > 0 else 0.0
-
-        QMessageBox.information(self, "Confusion Matrix",
-            f"✅  Overall LOO Accuracy : {overall:.1f}%\n"
-            f"Min per-class accuracy  : {per_class.min()*100:.1f}%\n"
-            f"Max per-class accuracy  : {per_class.max()*100:.1f}%\n"
-            f"Classes evaluated       : {len(classes)}"
-        )
-        self._set_status(f"Confusion matrix computed — LOO accuracy: {overall:.1f}%")
-
     # ──────────────────────────────────────────────────────────
     #  VISUALISATION HELPERS
     # ──────────────────────────────────────────────────────────
     def _show_eigenfaces(self):
+        """Render average face + top 15 eigenfaces on the Eigenfaces tab."""
         if not self.engine.model.is_trained:
             return
 
-        fig = self.ef_canvas.figure
+        fig  = self.ef_canvas.figure
         fig.clear()
         fig.patch.set_facecolor(PALETTE["mantle"])
 
         h, w   = self.engine.model.image_size
         n_show = min(15, self.engine.model.n_eigenfaces)
         cols   = 8
-        rows   = (n_show + 1 + cols - 1) // cols
+        rows   = (n_show + 1 + cols - 1) // cols   # +1 for avg face
 
         axes_list = fig.subplots(rows, cols, squeeze=False)
 
@@ -827,18 +662,20 @@ class MainWindow(QMainWindow):
             ax.set_title(title, color=PALETTE["text"], fontsize=6, pad=2)
             ax.axis("off")
 
+        # Average face in slot 0
         avg = self.engine.model.average_face
         _render(axes_list[0][0],
                 (avg - avg.min()) / (avg.max() - avg.min() + 1e-10),
                 "Avg Face")
 
         for i in range(n_show):
-            r   = (i + 1) // cols
-            c   = (i + 1) %  cols
+            row = (i + 1) // cols
+            col = (i + 1) %  cols
             ef  = self.engine.model.eigenfaces[i]
             ef_disp = (ef - ef.min()) / (ef.max() - ef.min() + 1e-10)
-            _render(axes_list[r][c], ef_disp, f"EF {i+1}")
+            _render(axes_list[row][col], ef_disp, f"EF {i+1}")
 
+        # Hide unused subplots
         total_slots = rows * cols
         for idx in range(n_show + 1, total_slots):
             r, c = idx // cols, idx % cols
@@ -849,91 +686,144 @@ class MainWindow(QMainWindow):
         fig.tight_layout()
         self.ef_canvas.draw()
 
-    def _plot_similarity(self, result):
+    def _plot_similarity(self, result: dict):
         """
-        FIX: Horizontal bar chart with non-overlapping labels.
-        - Labels are drawn inside bars when bar is wide enough,
-          outside with a background patch when bar is narrow.
-        - Right margin enlarged to prevent clip.
-        - Labels show 'person/image' to differentiate same-person images.
+        Professional horizontal bar chart of Top-5 similarity scores.
+        Dark theme, clean layout, no overlapping text, responsive labels.
         """
-        ax = self.sim_canvas.axes
-        ax.clear()
+        BG        = "#0f1220"
+        GREEN_BAR = "#a8e6a1"
+        BLUE_BAR  = "#8fb3ff"
+        TEXT_CLR  = "#e8edf8"
+        GRID_CLR  = "#1e2540"
+        TITLE_CLR = "#a8c8ff"
+        AXIS_CLR  = "#8892b0"
 
+        # ── Compute similarity values ──────────────────────────
+        threshold = self.engine.model.distance_threshold
+        matches   = result["top_matches"]          # list of (label, dist, path)
+        n         = len(matches)
+
+        raw_labels = [m[0] for m in matches]
+        dists      = [m[1] for m in matches]
+        sims       = [max(0.0, min(100.0,
+                         (1.0 - d / threshold) * 100.0))
+                      for d in dists]
+
+        # Highest match at the TOP → reverse order for barh
+        labels_rev = raw_labels[::-1]
+        sims_rev   = sims[::-1]
+        bar_colors = [BLUE_BAR] * n
+        bar_colors[0] = GREEN_BAR          # index 0 = best match = top of reversed list
+        colors_rev = bar_colors[::-1]
+
+        # ── Figure setup ───────────────────────────────────────
         fig = self.sim_canvas.figure
-        fig.patch.set_facecolor(PALETTE["mantle"])
-        ax.set_facecolor(PALETTE["mantle"])
+        fig.clear()
+        fig.patch.set_facecolor(BG)
 
-        matches = result["top_matches"]
-        # Build labels as "person/image"
-        bar_labels = [f"{m['person']}/{m['image']}" for m in matches]
-        sims       = [m["confidence"] for m in matches]
+        # Fixed height per bar so bars never stretch
+        bar_height  = 0.42
+        fig_height  = max(3.2, n * 0.72 + 1.2)
+        fig.set_size_inches(fig.get_figwidth(), fig_height)
 
-        # Reverse so Rank 1 is at top
-        bar_labels = bar_labels[::-1]
-        sims       = sims[::-1]
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(BG)
 
-        colors = [PALETTE["green"] if i == len(sims) - 1
-                  else PALETTE["blue"]
-                  for i in range(len(sims))]
-
+        # ── Draw bars ─────────────────────────────────────────
+        y_positions = list(range(n))
         bars = ax.barh(
-            range(len(bar_labels)), sims,
-            color=colors,
-            edgecolor=PALETTE["surface1"],
-            height=0.55,
+            y_positions,
+            sims_rev,
+            height=bar_height,
+            color=colors_rev,
+            edgecolor="none",
+            zorder=3,
         )
 
-        ax.set_yticks(range(len(bar_labels)))
-        ax.set_yticklabels(bar_labels, color=PALETTE["text"], fontsize=9)
+        # ── Labels: inside if bar wide enough, outside if small ─
+        for bar, sim in zip(bars, sims_rev):
+            bw    = bar.get_width()
+            by    = bar.get_y() + bar.get_height() / 2.0
+            label = f"{sim:.1f}%"
 
-        # Non-overlapping percentage labels
-        xlim_max = max(sims) * 1.25 if sims else 110
-        xlim_max = max(xlim_max, 20)    # at least 20% space
-        ax.set_xlim(0, xlim_max)
-
-        for bar, sim in zip(bars, sims):
-            bar_w  = bar.get_width()
-            bar_cx = bar.get_y() + bar.get_height() / 2
-            label  = f"{sim:.1f}%"
-
-            # If bar is wide enough, put label inside; otherwise outside
-            if bar_w > xlim_max * 0.18:
+            if bw >= 15:
+                # Place text inside the bar, right-aligned
                 ax.text(
-                    bar_w - xlim_max * 0.01, bar_cx,
-                    label,
+                    bw - 1.5, by, label,
                     va="center", ha="right",
-                    color=PALETTE["crust"],
-                    fontsize=8.5, fontweight="bold",
+                    color="#0f1220", fontsize=9.5, fontweight="bold",
+                    zorder=5,
                 )
             else:
+                # Place text outside the bar
                 ax.text(
-                    bar_w + xlim_max * 0.015, bar_cx,
-                    label,
+                    bw + 1.2, by, label,
                     va="center", ha="left",
-                    color=PALETTE["text"],
-                    fontsize=8.5,
-                    bbox=dict(
-                        boxstyle="round,pad=0.2",
-                        facecolor=PALETTE["surface0"],
-                        edgecolor="none",
-                        alpha=0.85,
-                    ),
+                    color=TEXT_CLR, fontsize=9.5, fontweight="bold",
+                    zorder=5,
                 )
 
-        ax.set_xlabel("Confidence (%)", color=PALETTE["text"], fontsize=9)
-        ax.set_title("Top Matches — Confidence Scores",
-                      color=PALETTE["blue"], fontsize=10, pad=8)
-        ax.tick_params(colors=PALETTE["text"])
-        for spine in ax.spines.values():
-            spine.set_edgecolor(PALETTE["surface1"])
+        # ── Y-axis: person labels ─────────────────────────────
+        ax.set_yticks(y_positions)
+        ax.set_yticklabels(
+            labels_rev,
+            color=TEXT_CLR,
+            fontsize=10,
+            fontweight="bold",
+        )
+        ax.tick_params(axis="y", length=0, pad=8)
 
-        # Extra right margin so labels outside bars don't clip
-        fig.tight_layout(rect=[0, 0, 0.97, 1])
+        # ── X-axis ────────────────────────────────────────────
+        ax.set_xlim(0, 115)
+        ax.set_xlabel("Similarity (%)", color=AXIS_CLR, fontsize=10, labelpad=8)
+        ax.tick_params(axis="x", colors=AXIS_CLR, labelsize=9)
+        ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(20))
+
+        # ── Grid ──────────────────────────────────────────────
+        ax.set_axisbelow(True)
+        ax.xaxis.grid(True, color=GRID_CLR, linewidth=0.8, linestyle="--", zorder=0)
+        ax.yaxis.grid(False)
+
+        # ── Spines ────────────────────────────────────────────
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.spines["bottom"].set_visible(True)
+        ax.spines["bottom"].set_color(GRID_CLR)
+
+        # ── Title ─────────────────────────────────────────────
+        ax.set_title(
+            "Top-5 Similarity Scores",
+            color=TITLE_CLR,
+            fontsize=12,
+            fontweight="bold",
+            pad=12,
+        )
+
+        # ── Y limits: add half-bar padding top and bottom ─────
+        ax.set_ylim(-bar_height, n - 1 + bar_height)
+
+        # ── Legend dot for best match ─────────────────────────
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor=GREEN_BAR, label="Best Match"),
+            Patch(facecolor=BLUE_BAR,  label="Other Matches"),
+        ]
+        ax.legend(
+            handles=legend_elements,
+            loc="lower right",
+            fontsize=8,
+            facecolor="#1a2035",
+            edgecolor=GRID_CLR,
+            labelcolor=TEXT_CLR,
+            framealpha=0.85,
+        )
+
+        fig.tight_layout(pad=1.4)
         self.sim_canvas.draw()
 
     @staticmethod
-    def _clear_canvas(canvas):
+    def _clear_canvas(canvas: MplCanvas):
         canvas.axes.clear()
         canvas.draw()
 
@@ -941,15 +831,15 @@ class MainWindow(QMainWindow):
     #  IMAGE DISPLAY
     # ──────────────────────────────────────────────────────────
     @staticmethod
-    def _display_image(label, path):
+    def _display_image(label: QLabel, path: str):
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         if img is None:
             label.setText("⚠  Cannot load image")
             return
-        img_rgb  = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-        h, w, ch = img_rgb.shape
-        qt_img   = QImage(img_rgb.data, w, h, ch * w, QImage.Format_RGB888)
-        pixmap   = QPixmap.fromImage(qt_img)
+        img_rgb   = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        h, w, ch  = img_rgb.shape
+        qt_img    = QImage(img_rgb.data, w, h, ch * w, QImage.Format_RGB888)
+        pixmap    = QPixmap.fromImage(qt_img)
         label.setPixmap(
             pixmap.scaled(label.width() or 200, label.height() or 250,
                           Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -968,35 +858,31 @@ class MainWindow(QMainWindow):
                        f"{m.training_time:.2f}s" if m.is_trained else "—")
 
     @staticmethod
-    def _set_stat(frame, value):
+    def _set_stat(frame: QFrame, value: str):
         for child in frame.children():
             if isinstance(child, QLabel) and "stat_" in (child.objectName() or ""):
                 child.setText(value)
                 return
+        # Fallback: update the second QLabel in the frame
         labels = frame.findChildren(QLabel)
         if len(labels) >= 2:
             labels[-1].setText(value)
 
     # ──────────────────────────────────────────────────────────
-    #  HISTORY TABLE  (updated for new result format)
+    #  HISTORY TABLE
     # ──────────────────────────────────────────────────────────
-    def _append_history(self, result):
+    def _append_history(self, result: dict):
         row = self.hist_table.rowCount()
         self.hist_table.insertRow(row)
         now    = datetime.datetime.now().strftime("%H:%M:%S")
         status = "✅" if result["accepted"] else "❌"
-        vals   = [
-            now,
-            os.path.basename(self.current_img or ""),
-            result["best_person"],
-            result["best_image_file"],
-            f"{result['confidence_pct']:.1f}%",
-            status,
-        ]
+        vals   = [now, os.path.basename(self.current_img or ""),
+                  result["best_label"],
+                  f"{result['confidence_pct']:.1f}%", status]
         for col, v in enumerate(vals):
             item = QTableWidgetItem(v)
             item.setTextAlignment(Qt.AlignCenter)
-            if col == 5:
+            if col == 4:
                 item.setForeground(QColor(PALETTE["green"] if result["accepted"]
                                           else PALETTE["red"]))
             self.hist_table.setItem(row, col, item)
@@ -1005,8 +891,8 @@ class MainWindow(QMainWindow):
     # ──────────────────────────────────────────────────────────
     #  UTILITY
     # ──────────────────────────────────────────────────────────
-    def _set_buttons_enabled(self, enabled):
+    def _set_buttons_enabled(self, enabled: bool):
         for btn in [self.btn_train, self.btn_recognize, self.btn_upload,
                     self.btn_save, self.btn_clear, self.btn_pdf,
-                    self.btn_conf_mat, self.btn_exit]:
+                    self.btn_exit]:
             btn.setEnabled(enabled)
