@@ -295,16 +295,16 @@ The GUI will launch automatically. If a previously trained model exists in `pca_
 ## 📸 Demo & Screenshots
 
 ### Main Interface
-![Main Interface](pictures/main.PNG)
+![Main Interface](pictures_videos/main.PNG)
 
 ### Recognition Result
-![Recognition Result](pictures/result.PNG)
+![Recognition Result](pictures_videos/result.PNG)
 
 ### Eigenfaces Visualisation
-![Eigenfaces Visualisation](pictures/Eigenfaces_Visualisation.PNG)
+![Eigenfaces Visualisation](pictures_videos/Eigenfaces_Visualisation.PNG)
 
 ### Similarity Graph
-![Similarity Graph](pictures/similarity_grap.PNG)
+![Similarity Graph](pictures_videos/similarity_grap.PNG)
 
 
 > 📝 *Replace the placeholder paths above with your actual screenshots.*  
